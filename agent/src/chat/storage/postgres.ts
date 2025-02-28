@@ -1,5 +1,11 @@
 import { Pool } from "pg"
-import { Chat, Message, Role } from "../generated/graphql"
+import {
+  Chat,
+  Message,
+  Role,
+  WidgetInteraction,
+  WidgetInteractionInput,
+} from "../generated/graphql"
 import { ChatStorage, CreateMessageInput } from "./types"
 
 export class PostgresChatStorage implements ChatStorage {
@@ -94,6 +100,66 @@ export class PostgresChatStorage implements ChatStorage {
     }
   }
 
+  async addWidgetInteraction(
+    input: WidgetInteractionInput
+  ): Promise<WidgetInteraction> {
+    const client = await this.pool.connect()
+    try {
+      await client.query("BEGIN")
+
+      // Check if message exists
+      const messageResult = await client.query(
+        "SELECT * FROM messages WHERE id = $1",
+        [input.messageId]
+      )
+
+      if (messageResult.rows.length === 0) {
+        throw new Error(`Message with id ${input.messageId} not found`)
+      }
+
+      // Parse the interaction data
+      let answer = null
+      let options = null
+
+      if (typeof input.interaction === "object") {
+        if ("answer" in input.interaction) {
+          answer = input.interaction.answer
+        }
+        if ("options" in input.interaction) {
+          options = input.interaction.options
+        }
+      } else if (typeof input.interaction === "string") {
+        answer = input.interaction
+      }
+
+      // Create widget interaction data
+      const widgetInteractionData = {
+        widgetId: input.widgetId,
+        answer,
+        options,
+        createdAt: new Date(),
+      }
+
+      const result = await client.query(
+        `UPDATE messages 
+         SET widget_interaction = $1 
+         WHERE id = $2
+         RETURNING *`,
+        [JSON.stringify(widgetInteractionData), input.messageId]
+      )
+
+      await client.query("COMMIT")
+
+      return widgetInteractionData
+    } catch (error) {
+      await client.query("ROLLBACK")
+      console.error("Error in addWidgetInteraction:", error)
+      throw error
+    } finally {
+      client.release()
+    }
+  }
+
   async createMessage(
     chatId: string,
     input: CreateMessageInput
@@ -173,6 +239,7 @@ export class PostgresChatStorage implements ChatStorage {
       imageUrls: row.image_urls || [],
       toolCalls: row.tool_calls || [],
       toolArgs: row.tool_args || [],
+      widgetInteraction: row.widget_interaction || null,
     }
   }
 }

@@ -10,8 +10,6 @@ RUN apk add --no-cache \
     jq=1.7.1-r0 \
     && rm -rf /var/cache/apk/*
 
-COPY --from=ghcr.io/0xfreysa/sovereign-freysa-agent:latest      /prebuild/dist/          /app/dist/
-COPY --from=ghcr.io/0xfreysa/sovereign-freysa-agent:latest      /prebuild/node_modules/  /app/node_modules/
 COPY --from=ghcr.io/0xfreysa/sovereign-freysa-sovereign:latest  /prebuild/enclave        /app/enclave
 COPY                                                            start.sh                 /app/start.sh
 

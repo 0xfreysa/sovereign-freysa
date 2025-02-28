@@ -1,7 +1,9 @@
 import { Resolvers } from "../generated/graphql"
 import { messageEventService } from "../services/MessageEventService"
+import { GraphQLJSON } from "graphql-type-json"
 
 export const resolvers: Resolvers = {
+  JSON: GraphQLJSON,
   Query: {
     getChats: (_, { first, offset }, { chatService, userId }) =>
       chatService.getChats(first, offset, userId),
@@ -11,12 +13,14 @@ export const resolvers: Resolvers = {
   Mutation: {
     createChat: (_, { name }, { chatService, userId }) =>
       chatService.createChat(name, userId),
-    sendMessage: (_, { chatId, text }, { chatService }) =>
-      chatService.sendMessage(chatId, text),
+    sendMessage: (_, { chatId, text }, { chatService, userId }) =>
+      chatService.sendMessage(chatId, text, userId),
     updateTitle: (_, { chatId, title }, { chatService }) =>
       chatService.updateChatTitle(chatId, title),
     deleteChat: (_, { chatId }, { chatService }) =>
       chatService.deleteChat(chatId),
+    widgetInteraction: (_, { interaction }, { chatService }) =>
+      chatService.addWidgetInteraction(interaction),
   },
 
   Subscription: {

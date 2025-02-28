@@ -24,6 +24,5 @@ export type TModelCall = {
 }
 
 export type TEmbedCall = {
-  model: string
   input: string
 }

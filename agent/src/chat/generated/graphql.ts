@@ -15,6 +15,7 @@ export type Scalars = {
   Int: { input: number; output: number; }
   Float: { input: number; output: number; }
   DateTime: { input: Date; output: Date; }
+  JSON: { input: any; output: any; }
 };
 
 export type Chat = {
@@ -34,6 +35,7 @@ export type Message = {
   text?: Maybe<Scalars['String']['output']>;
   toolArgs?: Maybe<Array<ToolArg>>;
   toolCalls: Array<ToolCall>;
+  widgetInteraction?: Maybe<WidgetInteraction>;
 };
 
 export type Mutation = {
@@ -42,6 +44,7 @@ export type Mutation = {
   deleteChat: Chat;
   sendMessage: Message;
   updateTitle: Chat;
+  widgetInteraction: WidgetInteraction;
 };
 
 
@@ -64,6 +67,11 @@ export type MutationSendMessageArgs = {
 export type MutationUpdateTitleArgs = {
   chatId: Scalars['ID']['input'];
   title: Scalars['String']['input'];
+};
+
+
+export type MutationWidgetInteractionArgs = {
+  interaction: WidgetInteractionInput;
 };
 
 export type Query = {
@@ -109,6 +117,20 @@ export type ToolCall = {
   id: Scalars['String']['output'];
   isCompleted: Scalars['Boolean']['output'];
   name: Scalars['String']['output'];
+};
+
+export type WidgetInteraction = {
+  __typename?: 'WidgetInteraction';
+  answer?: Maybe<Scalars['String']['output']>;
+  createdAt: Scalars['DateTime']['output'];
+  options?: Maybe<Array<Maybe<Scalars['String']['output']>>>;
+  widgetId: Scalars['String']['output'];
+};
+
+export type WidgetInteractionInput = {
+  interaction: Scalars['JSON']['input'];
+  messageId: Scalars['String']['input'];
+  widgetId: Scalars['String']['input'];
 };
 
 export type WithIndex<TObject> = TObject & Record<string, any>;
@@ -184,6 +206,7 @@ export type ResolversTypes = ResolversObject<{
   DateTime: ResolverTypeWrapper<Scalars['DateTime']['output']>;
   ID: ResolverTypeWrapper<Scalars['ID']['output']>;
   Int: ResolverTypeWrapper<Scalars['Int']['output']>;
+  JSON: ResolverTypeWrapper<Scalars['JSON']['output']>;
   Message: ResolverTypeWrapper<Message>;
   Mutation: ResolverTypeWrapper<{}>;
   Query: ResolverTypeWrapper<{}>;
@@ -192,6 +215,8 @@ export type ResolversTypes = ResolversObject<{
   Subscription: ResolverTypeWrapper<{}>;
   ToolArg: ResolverTypeWrapper<ToolArg>;
   ToolCall: ResolverTypeWrapper<ToolCall>;
+  WidgetInteraction: ResolverTypeWrapper<WidgetInteraction>;
+  WidgetInteractionInput: WidgetInteractionInput;
 }>;
 
 /** Mapping between all available schema types and the resolvers parents */
@@ -201,6 +226,7 @@ export type ResolversParentTypes = ResolversObject<{
   DateTime: Scalars['DateTime']['output'];
   ID: Scalars['ID']['output'];
   Int: Scalars['Int']['output'];
+  JSON: Scalars['JSON']['output'];
   Message: Message;
   Mutation: {};
   Query: {};
@@ -208,6 +234,8 @@ export type ResolversParentTypes = ResolversObject<{
   Subscription: {};
   ToolArg: ToolArg;
   ToolCall: ToolCall;
+  WidgetInteraction: WidgetInteraction;
+  WidgetInteractionInput: WidgetInteractionInput;
 }>;
 
 export type IsAuthorizedDirectiveArgs = { };
@@ -226,6 +254,10 @@ export interface DateTimeScalarConfig extends GraphQLScalarTypeConfig<ResolversT
   name: 'DateTime';
 }
 
+export interface JsonScalarConfig extends GraphQLScalarTypeConfig<ResolversTypes['JSON'], any> {
+  name: 'JSON';
+}
+
 export type MessageResolvers<ContextType = any, ParentType extends ResolversParentTypes['Message'] = ResolversParentTypes['Message']> = ResolversObject<{
   createdAt?: Resolver<ResolversTypes['DateTime'], ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
@@ -234,6 +266,7 @@ export type MessageResolvers<ContextType = any, ParentType extends ResolversPare
   text?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   toolArgs?: Resolver<Maybe<Array<ResolversTypes['ToolArg']>>, ParentType, ContextType>;
   toolCalls?: Resolver<Array<ResolversTypes['ToolCall']>, ParentType, ContextType>;
+  widgetInteraction?: Resolver<Maybe<ResolversTypes['WidgetInteraction']>, ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
@@ -242,6 +275,7 @@ export type MutationResolvers<ContextType = any, ParentType extends ResolversPar
   deleteChat?: Resolver<ResolversTypes['Chat'], ParentType, ContextType, RequireFields<MutationDeleteChatArgs, 'chatId'>>;
   sendMessage?: Resolver<ResolversTypes['Message'], ParentType, ContextType, RequireFields<MutationSendMessageArgs, 'chatId' | 'text'>>;
   updateTitle?: Resolver<ResolversTypes['Chat'], ParentType, ContextType, RequireFields<MutationUpdateTitleArgs, 'chatId' | 'title'>>;
+  widgetInteraction?: Resolver<ResolversTypes['WidgetInteraction'], ParentType, ContextType, RequireFields<MutationWidgetInteractionArgs, 'interaction'>>;
 }>;
 
 export type QueryResolvers<ContextType = any, ParentType extends ResolversParentTypes['Query'] = ResolversParentTypes['Query']> = ResolversObject<{
@@ -266,15 +300,25 @@ export type ToolCallResolvers<ContextType = any, ParentType extends ResolversPar
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;
 
+export type WidgetInteractionResolvers<ContextType = any, ParentType extends ResolversParentTypes['WidgetInteraction'] = ResolversParentTypes['WidgetInteraction']> = ResolversObject<{
+  answer?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  createdAt?: Resolver<ResolversTypes['DateTime'], ParentType, ContextType>;
+  options?: Resolver<Maybe<Array<Maybe<ResolversTypes['String']>>>, ParentType, ContextType>;
+  widgetId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+}>;
+
 export type Resolvers<ContextType = any> = ResolversObject<{
   Chat?: ChatResolvers<ContextType>;
   DateTime?: GraphQLScalarType;
+  JSON?: GraphQLScalarType;
   Message?: MessageResolvers<ContextType>;
   Mutation?: MutationResolvers<ContextType>;
   Query?: QueryResolvers<ContextType>;
   Subscription?: SubscriptionResolvers<ContextType>;
   ToolArg?: ToolArgResolvers<ContextType>;
   ToolCall?: ToolCallResolvers<ContextType>;
+  WidgetInteraction?: WidgetInteractionResolvers<ContextType>;
 }>;
 
 export type DirectiveResolvers<ContextType = any> = ResolversObject<{

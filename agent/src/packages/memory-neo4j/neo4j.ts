@@ -36,7 +36,6 @@ export class Neo4jMemory implements Memory {
     const session = this.driverInstance.session()
     try {
       const queryEmbedding = await this.model.embeddings({
-        model: "text-embedding-ada-002",
         input: searchQuery,
       })
 

@@ -1,7 +1,7 @@
 {
   "name": "@ghostagent/testagent111",
   "packageManager": "pnpm@8.15.1",
-  "version": "0.0.32",
+  "version": "0.0.45",
   "publishConfig": {
     "access": "restricted"
   },
@@ -50,6 +50,7 @@
     "fastify": "^5.2.1",
     "fastify-plugin": "^5.0.1",
     "graphql": "^16.10.0",
+    "graphql-type-json": "^0.3.2",
     "jose": "^5.9.6",
     "mercurius": "^16.0.1",
     "neo4j-driver": "^5.27.0",

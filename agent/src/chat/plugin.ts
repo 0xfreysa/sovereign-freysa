@@ -10,6 +10,7 @@ import { createAuthMiddlereFromJwtService } from "../common/middlewares/auth"
 import { ChatService } from "./services/ChatService"
 import { messageEventService } from "./services/MessageEventService"
 import { JWTService } from "../common/middlewares/jwt"
+import { ChatServiceType } from "./types"
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -21,6 +22,7 @@ export interface ChatPluginOptions {
   storage: StorageConfig
   agent: Agent
   userId?: string
+  chatService?: ChatServiceType
 }
 
 export const chatPlugin: FastifyPluginAsync<ChatPluginOptions> = async (
@@ -28,11 +30,13 @@ export const chatPlugin: FastifyPluginAsync<ChatPluginOptions> = async (
   options
 ) => {
   const storage: ChatStorage = await StorageFactory.create(options.storage)
-  const chatService = new ChatService(
-    storage,
-    options.agent,
-    messageEventService
-  )
+
+  let chatService: ChatServiceType
+  if (options.chatService) {
+    chatService = options.chatService
+  } else {
+    chatService = new ChatService(storage, options.agent, messageEventService)
+  }
 
   const schema = readFileSync(join(__dirname, "schema.graphql"), "utf8")
 
@@ -75,11 +79,6 @@ export const chatPlugin: FastifyPluginAsync<ChatPluginOptions> = async (
     schema,
     resolvers,
     context: (request) => {
-      // if (!request.userId) {
-      //   console.error("No userId in context creation")
-      //   throw new Error("Authentication required")
-      // }
-
       return {
         storage,
         agent: options.agent,
@@ -104,6 +103,7 @@ export const chatPlugin: FastifyPluginAsync<ChatPluginOptions> = async (
   })
 
   fastify.decorate("chatStorage", storage)
+  fastify.decorate("chatService", chatService)
 }
 
 export default require("fastify-plugin")(chatPlugin)

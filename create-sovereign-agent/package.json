@@ -1,5 +1,5 @@
 {
-  "name": "@freysa/create-sovereign-agent",
+  "name": "create-sovereign-agent",
   "version": "1.0.0",
   "type": "module",
   "bin": {
@@ -11,20 +11,5 @@
   "dependencies": {
     "commander": "^10.0.0",
     "fs-extra": "^11.1.0"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
-  "engines": {
-    "node": ">=14.16"
-  },
-  "description": "CLI tool to make your agent sovereign.",
-  "keywords": [
-    "sovereign",
-    "agent",
-    "enclave",
-    "tee"
-  ],
-  "author": "Freysa",
-  "license": "MIT"
+  }
 }

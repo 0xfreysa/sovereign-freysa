@@ -5,6 +5,7 @@
     "dev": "tsx watch src/server.ts",
     "dev:chat": "tsx watch src/chat-server.ts",
     "transfer": "tsx src/transfer.ts",
+    "replicate": "tsx src/replicate.ts",
     "swap": "tsx src/swap.ts",
     "prebuild": "rm -rf dist",
     "build": "tsup src/server.ts --format cjs --dts --clean",

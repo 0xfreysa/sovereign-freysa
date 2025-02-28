@@ -1,7 +1,7 @@
 import Fastify, { FastifyInstance } from "fastify"
 import cors from "@fastify/cors"
 import { Agent } from "../common/agents"
-import { chatPlugin } from "./index"
+import { chatPlugin, ChatServiceType } from "./index"
 import { StorageConfig } from "./storage/factory"
 import { logger } from "@/common"
 
@@ -11,6 +11,7 @@ export interface ChatServerConfig {
   storage: StorageConfig
   agent: Agent
   fastify?: FastifyInstance
+  chatService?: ChatServiceType
 }
 
 export async function createChatServer(config: ChatServerConfig) {
@@ -25,6 +26,7 @@ export async function createChatServer(config: ChatServerConfig) {
   await fastify.register(chatPlugin, {
     storage: config.storage,
     agent: config.agent,
+    chatService: config.chatService,
   })
 
   // Health check endpoint
@@ -33,7 +35,7 @@ export async function createChatServer(config: ChatServerConfig) {
   })
 
   if (!config.fastify) {
-    const port = config.port || 3002
+    const port = config.port
     const host = config.host || "0.0.0.0"
 
     try {

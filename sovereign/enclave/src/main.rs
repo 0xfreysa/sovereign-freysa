@@ -49,7 +49,13 @@ fn main() {
     // Handle sovereign configuration
     let config: SovereignConfig = {
         if let Some(config_str) = args.config {
-            serde_json::from_str(&config_str).unwrap()
+            match serde_json::from_str(&config_str) {
+                Ok(config) => config,
+                Err(e) => {
+                    tracing::error!("unable to parse configuration: {}", e);
+                    std::process::exit(1);
+                }
+            }
         } else {
             eprintln!("no config provided; exiting...");
             std::process::exit(1);
@@ -135,6 +141,7 @@ pub async fn sovereign_main<SM: Secmod + 'static>(config: SovereignConfig) -> Re
 
     // Extend the PCR values with the public keys corresponding to the secret key material.
     // TODO: consider using a Merkle tree of public keys so that any public key can be verified.
+    // Or, even better, use key-derivation instead of multiple keys...
     let measurements = vec![
         state.cert_public_key_der.to_vec(),
         state.pairs[0].public_key.to_sec1_bytes().to_vec(),
@@ -163,11 +170,9 @@ pub async fn sovereign_main<SM: Secmod + 'static>(config: SovereignConfig) -> Re
         Arc::new(tokio_rustls::TlsAcceptor::from(std::sync::Arc::new(server_config)));
     tracing::debug!("https configured");
 
-    let _grpc_handle = {
+    let grpc_future = {
         use grpc::pb::key_pool_service_server::KeyPoolServiceServer;
         use grpc::SignerServiceImpl;
-        use tokio::net::UnixListener;
-        use tokio_stream::wrappers::UnixListenerStream;
         use tonic_reflection::server::Builder;
 
         // Create the service
@@ -181,25 +186,39 @@ pub async fn sovereign_main<SM: Secmod + 'static>(config: SovereignConfig) -> Re
             .register_encoded_file_descriptor_set(file_descriptor_set)
             .build_v1()?;
 
-        let uds_path = "/tmp/enclave.sock";
-        // Remove existing socket file if it exists
-        let _ = std::fs::remove_file(uds_path);
-        // Create a UnixListener
-        let unix_listener = UnixListener::bind(uds_path)?;
-        // Create a stream from the listener
-        let incoming = UnixListenerStream::new(unix_listener);
-
-        tracing::info!("Starting gRPC server on UDS: {}", uds_path);
-
         let state = state.clone();
-        tokio::spawn(async move {
-            tonic::transport::Server::builder()
-                .layer(monitoring::MetricsLayer { metrics: state.metrics.clone() })
-                .add_service(reflection_service)
-                .add_service(svc)
-                .serve_with_incoming(incoming)
-                .await
-        })
+        let router = tonic::transport::Server::builder()
+            .layer(monitoring::MetricsLayer { metrics: state.metrics.clone() })
+            .add_service(reflection_service)
+            .add_service(svc);
+        match &config.grpc_config {
+            config::GrpcConfig::UnixDomainSocket(uds_path) => {
+                tracing::info!("Starting gRPC server on UDS: {}", uds_path);
+                use tokio::net::UnixListener;
+                use tokio_stream::wrappers::UnixListenerStream;
+                // Remove existing socket file if it exists
+                let _ = std::fs::remove_file(uds_path);
+                // Create a UnixListener
+                let unix_listener = UnixListener::bind(uds_path)?;
+                // Create a stream from the listener
+                let incoming = UnixListenerStream::new(unix_listener);
+                // Code below is duplicated as `incoming` in the two branches do not
+                // have a common type, despite both being valid arguments to `serve_with_incoming`.
+                tokio::spawn(async move { router.serve_with_incoming(incoming).await })
+            }
+            config::GrpcConfig::Vsock(vsock_listen_port) => {
+                tracing::info!("Starting gRPC server on VSOCK port: {}", vsock_listen_port);
+                // NOTE: we're not using SM::listen here as then we switch between TCP and VSOCK
+                // instead of UDS and VSOCK.
+                let vsock_addr =
+                    tokio_vsock::VsockAddr::new(tokio_vsock::VMADDR_CID_ANY, *vsock_listen_port);
+                let vsock_listener = tokio_vsock::VsockListener::bind(vsock_addr)?;
+                let incoming = VsockListenerStream { inner: vsock_listener };
+                // Code below is duplicated as `incoming` in the two branches do not
+                // have a common type, despite both being valid arguments to `serve_with_incoming`.
+                tokio::spawn(async move { router.serve_with_incoming(incoming).await })
+            }
+        }
     };
 
     // Serve key-sync requests using custom protocol.
@@ -289,20 +308,102 @@ pub async fn sovereign_main<SM: Secmod + 'static>(config: SovereignConfig) -> Re
     host_acceptors.do_listen(state).await?;
 
     let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(60));
+    let heartbeat_future = async {
+        loop {
+            heartbeat.tick().await;
+            tracing::debug!("heartbeat: server is alive");
+        }
+    };
 
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {
             tracing::info!("received Ctrl-C, shutting down...");
         }
-        _ = async {
-            loop {
-                heartbeat.tick().await;
-                tracing::debug!("heartbeat: server is alive");
+        res = grpc_future => {
+            match res {
+                Ok(Err(e)) => tracing::error!("gRPC server error: {}", e),
+                Ok(Ok(())) => tracing::error!("gRPC server terminated without error"),
+                Err(e) => tracing::error!("gRPC join error: {}", e)
             }
-        } => {}
+        }
+        _ = heartbeat_future => {}
     }
 
     Ok(())
+}
+
+// Wrap a VSOCK listener in a stream to make it 'tonic' compatible.
+struct VsockListenerStream {
+    inner: tokio_vsock::VsockListener,
+}
+
+impl futures::Stream for VsockListenerStream {
+    type Item = Result<VsockStreamConnected, std::io::Error>;
+
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        // Use Pin projection to access inner field
+        let inner = &self.inner;
+        match futures::ready!(inner.poll_accept(cx)) {
+            Ok((stream, _addr)) => std::task::Poll::Ready(Some(Ok(VsockStreamConnected(stream)))),
+            Err(e) => std::task::Poll::Ready(Some(Err(e))),
+        }
+    }
+}
+
+struct VsockStreamConnected(tokio_vsock::VsockStream);
+
+impl tonic::transport::server::Connected for VsockStreamConnected {
+    /// The connection info type the IO resources generates.
+    // all these bounds are necessary to set this as a request extension
+    type ConnectInfo = Option<tokio_vsock::VsockAddr>;
+
+    /// Create type holding information about the connection.
+    fn connect_info(&self) -> Self::ConnectInfo {
+        match self.0.peer_addr() {
+            Ok(peer) => Some(peer),
+            Err(e) => {
+                tracing::warn!("connect_info error; continuing without: {}", e);
+                None
+            }
+        }
+    }
+}
+
+impl tokio::io::AsyncRead for VsockStreamConnected {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        Pin::new(&mut self.0).poll_read(cx, buf)
+    }
+}
+
+impl tokio::io::AsyncWrite for VsockStreamConnected {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::result::Result<usize, std::io::Error>> {
+        Pin::new(&mut self.0).poll_write(cx, buf)
+    }
+
+    fn poll_flush(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::result::Result<(), std::io::Error>> {
+        Pin::new(&mut self.0).poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::result::Result<(), std::io::Error>> {
+        Pin::new(&mut self.0).poll_shutdown(cx)
+    }
 }
 
 async fn serve_metrics<SM: Secmod>(

@@ -96,11 +96,28 @@ pub struct SovereignConfig {
     // Trace = 0, Debug = 1, Info = 2, Warn = 3, Error = 4.
     #[serde(rename = "trace-level", default)]
     pub trace_level: usize,
+    // GRPC server config.
+    #[serde(rename = "grpc-config", default)]
+    pub grpc_config: GrpcConfig,
 }
 
 impl SovereignConfig {
     pub fn validate(&self) -> Result<()> {
         self.secret_keys_from.validate()?;
         Ok(())
+    }
+}
+
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+pub enum GrpcConfig {
+    #[serde(rename = "unix-domain-socket")]
+    UnixDomainSocket(String),
+    #[serde(rename = "vsock")]
+    Vsock(u32),
+}
+
+impl Default for GrpcConfig {
+    fn default() -> Self {
+        Self::UnixDomainSocket("/tmp/enclave.sock".into())
     }
 }

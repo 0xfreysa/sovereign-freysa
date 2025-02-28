@@ -24,7 +24,6 @@ export class SQLiteMemory implements Memory {
 
   async search(query: string): Promise<string[]> {
     const queryEmbedding = await this.model.embeddings({
-      model: "text-embedding-ada-002",
       input: query,
     })
 
@@ -50,7 +49,6 @@ export class SQLiteMemory implements Memory {
 
     for (const chunk of chunks) {
       const embedding = await this.model.embeddings({
-        model: "text-embedding-ada-002",
         input: chunk,
       })
 

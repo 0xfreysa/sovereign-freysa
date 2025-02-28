@@ -54,7 +54,9 @@ export class ReplicateImageGenerationTool implements Tool<ReplicateInput> {
   execute = async (input: ReplicateInput) => {
     const storedUrls = await replicateRunAndSave({
       prompt: input.prompt,
-      model: this.model,
+      model: this.model as
+        | `${string}/${string}`
+        | `${string}/${string}:${string}`,
       numOutputs: this.numOutputs,
       storage: this.storage,
     })

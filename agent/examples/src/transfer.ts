@@ -124,7 +124,7 @@ async function exampleGrpcPKSigner() {
 }
 
 async function test() {
-  logger.info("Testing private key signer")
+  //logger.info("Testing private key signer")
   //await examplePrivateKeySigner()
   // logger.info("Testing safe signer")
   // await exampleSafeSigner()

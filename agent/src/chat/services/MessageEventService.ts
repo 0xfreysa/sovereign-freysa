@@ -13,6 +13,7 @@ export interface MessageEventServiceType {
     chatId: string,
     storage: ChatStorage
   ) => SubscriptionHandlers
+  waitForToolStart: (toolName: string, chatId: string) => Promise<void>
 }
 
 export interface SubscriptionHandlers {
@@ -31,6 +32,7 @@ const toolNameMap: Record<ToolName, string> = {
 
 export interface ToolEvent {
   toolName: ToolName
+  toolChatId?: string
   timestamp: string
   result?: string
 }
@@ -150,33 +152,60 @@ export class MessageEventService implements MessageEventServiceType {
     queue: Message[],
     resolvers: Array<(value: IteratorResult<{ messageAdded: Message }>) => void>
   ) {
-    return async ({ toolName, timestamp }: ToolEvent) => {
-      const toolMessage = await storage.createMessage(chatId, {
-        text: `Starting tool: ${toolNameMap[toolName] || toolName}`,
-        role: Role.Assistant,
-        imageUrls: [],
-        toolCalls: [
-          {
-            id: toolName,
-            isCompleted: false,
-            name: toolNameMap[toolName] || toolName,
-          },
-        ],
-        toolArgs: [],
-      })
-
-      const mapKey = this.getToolMapKey(chatId, toolName)
-      this.toolMessagesMap.set(mapKey, toolMessage.id)
-
-      if (resolvers.length > 0) {
-        const resolve = resolvers.shift()!
-        resolve({ value: { messageAdded: toolMessage }, done: false })
-      } else {
-        queue.push(toolMessage)
+    return async ({ toolName, toolChatId, timestamp }: ToolEvent) => {
+      // Skip if this event is for a different chat
+      if (!toolChatId || toolChatId !== chatId) {
+        console.log(
+          `Skipping tool start for ${toolName} - event toolChatId: ${toolChatId}, subscription chatId: ${chatId}`
+        )
+        return
       }
 
-      // Emit event when tool start is fully processed
-      globalEventEmitter.emit(TOOL_EVENTS.TOOL_START_PROCESSED, toolName)
+      try {
+        const chat = await storage.getChat(chatId)
+        if (!chat) {
+          console.error(
+            `Chat ${chatId} not found when starting tool ${toolName}`
+          )
+          return
+        }
+
+        const toolMessage = await storage.createMessage(chatId, {
+          text: `Starting tool: ${toolNameMap[toolName] || toolName}`,
+          role: Role.Assistant,
+          imageUrls: [],
+          toolCalls: [
+            {
+              id: toolName,
+              isCompleted: false,
+              name: toolNameMap[toolName] || toolName,
+            },
+          ],
+          toolArgs: [],
+        })
+
+        const mapKey = this.getToolMapKey(chatId, toolName)
+        console.log(`Setting map key: ${mapKey}, message ID: ${toolMessage.id}`)
+        this.toolMessagesMap.set(mapKey, toolMessage.id)
+
+        if (resolvers.length > 0) {
+          const resolve = resolvers.shift()!
+          resolve({ value: { messageAdded: toolMessage }, done: false })
+        } else {
+          queue.push(toolMessage)
+        }
+
+        // Emit a chat-specific event with both toolName and chatId
+        globalEventEmitter.emit(TOOL_EVENTS.TOOL_START_PROCESSED, {
+          toolName,
+          chatId: toolChatId,
+        })
+      } catch (error) {
+        console.error(
+          `Error processing tool start for ${toolName} in chat ${chatId}:`,
+          error
+        )
+      }
     }
   }
 
@@ -186,9 +215,34 @@ export class MessageEventService implements MessageEventServiceType {
     queue: Message[],
     resolvers: Array<(value: IteratorResult<{ messageAdded: Message }>) => void>
   ) {
-    return async ({ toolName, result, timestamp }: ToolEvent) => {
+    return async ({ toolName, toolChatId, result, timestamp }: ToolEvent) => {
+      // Skip if this event is for a different chat
+      if (!toolChatId || toolChatId !== chatId) {
+        console.log(
+          `Skipping tool end for ${toolName} - event toolChatId: ${toolChatId}, subscription chatId: ${chatId}`
+        )
+        return
+      }
+
       const mapKey = this.getToolMapKey(chatId, toolName)
-      const messageId = this.toolMessagesMap.get(mapKey)
+      console.log(`Looking up map key: ${mapKey}`)
+
+      let messageId = this.toolMessagesMap.get(mapKey)
+
+      if (!messageId) {
+        console.log(
+          `Message ID not found immediately for ${mapKey}, retrying...`
+        )
+        for (let i = 0; i < 3; i++) {
+          await new Promise((resolve) => setTimeout(resolve, 500))
+          messageId = this.toolMessagesMap.get(mapKey)
+          if (messageId) {
+            console.log(`Found message ID on retry ${i + 1}: ${messageId}`)
+            break
+          }
+        }
+      }
+
       if (!messageId) {
         console.error(
           `No message found for tool: ${toolName} in chat: ${chatId}`
@@ -196,50 +250,57 @@ export class MessageEventService implements MessageEventServiceType {
         return
       }
 
-      let toolArgs: ToolArg[] = []
-      if (toolName.startsWith(WIDGET_TOOL_PREFIX) && result) {
-        try {
-          const parsedResult = JSON.parse(result)
-          if (
-            Array.isArray(parsedResult) &&
-            parsedResult.every((arg) => arg.name && arg.arguments)
-          ) {
-            toolArgs = parsedResult.map((arg) => ({
-              name: arg.name,
-              arguments:
-                typeof arg.arguments === "string"
-                  ? arg.arguments
-                  : JSON.stringify(arg.arguments),
-            }))
-          } else {
-            console.error("Invalid toolArgs format:", parsedResult)
+      try {
+        let toolArgs: ToolArg[] = []
+        if (toolName.startsWith(WIDGET_TOOL_PREFIX) && result) {
+          try {
+            const parsedResult = JSON.parse(result)
+            if (
+              Array.isArray(parsedResult) &&
+              parsedResult.every((arg) => arg.name && arg.arguments)
+            ) {
+              toolArgs = parsedResult.map((arg) => ({
+                name: arg.name,
+                arguments:
+                  typeof arg.arguments === "string"
+                    ? arg.arguments
+                    : JSON.stringify(arg.arguments),
+              }))
+            } else {
+              console.error("Invalid toolArgs format:", parsedResult)
+            }
+          } catch (error) {
+            console.error("Error parsing tool result:", error)
           }
-        } catch (error) {
-          console.error("Error parsing tool result:", error)
         }
+
+        const updatedMessage = await storage.updateMessage(messageId, {
+          text: `Completed tool: ${toolNameMap[toolName] || toolName}\nResult: ${result}`,
+          toolCalls: [
+            {
+              id: toolName,
+              isCompleted: true,
+              name: toolNameMap[toolName] || toolName,
+            },
+          ],
+          role: Role.Assistant,
+          toolArgs: toolArgs,
+        })
+
+        if (resolvers.length > 0) {
+          const resolve = resolvers.shift()!
+          resolve({ value: { messageAdded: updatedMessage }, done: false })
+        } else {
+          queue.push(updatedMessage)
+        }
+
+        this.toolMessagesMap.delete(mapKey)
+      } catch (error) {
+        console.error(
+          `Error processing tool end for ${toolName} in chat ${chatId}:`,
+          error
+        )
       }
-
-      const updatedMessage = await storage.updateMessage(messageId, {
-        text: `Completed tool: ${toolNameMap[toolName] || toolName}\nResult: ${result}`,
-        toolCalls: [
-          {
-            id: toolName,
-            isCompleted: true,
-            name: toolNameMap[toolName] || toolName,
-          },
-        ],
-        role: Role.Assistant,
-        toolArgs: toolArgs,
-      })
-
-      if (resolvers.length > 0) {
-        const resolve = resolvers.shift()!
-        resolve({ value: { messageAdded: updatedMessage }, done: false })
-      } else {
-        queue.push(updatedMessage)
-      }
-
-      this.toolMessagesMap.delete(mapKey)
     }
   }
 
@@ -269,10 +330,10 @@ export class MessageEventService implements MessageEventServiceType {
     return Promise.resolve({ value: undefined, done: true })
   }
 
-  async waitForToolStart(toolName: string): Promise<void> {
+  async waitForToolStart(toolName: string, chatId: string): Promise<void> {
     return new Promise((resolve) => {
-      const listener = (processedToolName: string) => {
-        if (processedToolName === toolName) {
+      const listener = (data: { toolName: string; chatId: string }) => {
+        if (data.toolName === toolName && data.chatId === chatId) {
           globalEventEmitter.removeListener(
             TOOL_EVENTS.TOOL_START_PROCESSED,
             listener

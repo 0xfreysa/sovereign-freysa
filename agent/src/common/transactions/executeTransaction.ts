@@ -16,6 +16,7 @@ export interface SafeSignerConfig {
   deployerProxy?: string
   grpcEthClientUrl?: string
   bearerToken?: string
+  ssl?: boolean
 }
 
 export interface GrpcPKSignerConfig {
@@ -23,6 +24,7 @@ export interface GrpcPKSignerConfig {
   rpcUrl: string
   grpcEthClientUrl?: string
   bearerToken?: string
+  ssl?: boolean
 }
 
 export interface PrivateKeySignerConfig {
@@ -49,7 +51,8 @@ export class SAFSigner {
       this.deployerProxy = config.deployerProxy
       this.grpcEthClient = new GrpcEthereumSignerClient(
         config.grpcEthClientUrl,
-        config.bearerToken
+        config.bearerToken,
+        config.ssl
       )
     } else if (config.type === TransactionMode.PRIVATE_KEY) {
       this.transactionOrigin = TransactionMode.PRIVATE_KEY
@@ -60,7 +63,8 @@ export class SAFSigner {
       this.rpcUrl = config.rpcUrl
       this.grpcEthClient = new GrpcEthereumSignerClient(
         config.grpcEthClientUrl,
-        config.bearerToken
+        config.bearerToken,
+        config.ssl
       )
     } else {
       throw new Error("Invalid transaction mode")

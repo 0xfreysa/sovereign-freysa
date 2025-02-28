@@ -48,24 +48,31 @@ export class Agent implements Executor {
     return this.execute(messages)
   }
 
-  private async preToolCallHook(toolName: string) {
+  private async preToolCallHook(toolName: string, chatId: string) {
     globalEventEmitter.emit(TOOL_EVENTS.TOOL_START, {
       toolName,
+      toolChatId: chatId,
       timestamp: new Date().toISOString(),
     })
+
     // Wait for the tool start event to be fully processed
-    await messageEventService.waitForToolStart(toolName)
+    await messageEventService.waitForToolStart(toolName, chatId)
   }
 
-  private async postToolCallHook(toolName: string, result: string) {
+  private async postToolCallHook(
+    toolName: string,
+    result: string,
+    chatId: string
+  ) {
     globalEventEmitter.emit(TOOL_EVENTS.TOOL_END, {
       toolName,
+      toolChatId: chatId,
       result,
       timestamp: new Date().toISOString(),
     })
   }
 
-  async execute(messages: TChatMessage[]) {
+  async execute(messages: TChatMessage[], chatId?: string) {
     let isCompleted = false
     let currentStep = 0
     let response = ""
@@ -85,15 +92,15 @@ export class Agent implements Executor {
             logger.info("Execution completed")
           }
 
-          await this.preToolCallHook(toolCall.function.name)
+          chatId && (await this.preToolCallHook(toolCall.function.name, chatId))
 
           const toolResult = await this.executeTool(
             toolCall.function.name,
             toolCall.function.arguments
           )
 
-          // Call after tool execution
-          this.postToolCallHook(toolCall.function.name, toolResult)
+          chatId &&
+            this.postToolCallHook(toolCall.function.name, toolResult, chatId)
 
           messages.push({
             role: "assistant",

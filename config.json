@@ -9,6 +9,9 @@
     }
   },
   "sovereign" : {
+    "grpc-config": {
+      "vsock" : 50555
+    },
     "secret-keys-from": {
       "generate" : 1000
     },

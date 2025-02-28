@@ -1,17 +1,8 @@
 import { Agent } from "@/common"
 import { ChatStorage } from "../storage/types"
-import { transformToOpenAIMessages } from "../types"
-import { Chat, Message, Role } from "../generated/graphql"
+import { ChatServiceType, transformToOpenAIMessages } from "../types"
+import { Role, WidgetInteractionInput } from "../generated/graphql"
 import { MessageEventService } from "./MessageEventService"
-
-export interface ChatServiceType {
-  getChats: (first: number, offset: number, userId: string) => Promise<Chat[]>
-  getChat: (id: string) => Promise<Chat>
-  createChat: (name: string, userId: string) => Promise<Chat>
-  sendMessage: (chatId: string, text: string) => Promise<Message>
-  updateChatTitle: (chatId: string, title: string) => Promise<Chat>
-  deleteChat: (chatId: string) => Promise<Chat>
-}
 
 export class ChatService implements ChatServiceType {
   private readonly NUMBER_OF_MESSAGES = 100
@@ -50,6 +41,15 @@ export class ChatService implements ChatServiceType {
     } catch (error) {
       console.error("Error creating chat:", error)
       throw new Error("Failed to create chat")
+    }
+  }
+
+  async addWidgetInteraction(interaction: WidgetInteractionInput) {
+    try {
+      return await this.storage.addWidgetInteraction(interaction)
+    } catch (error) {
+      console.error("Error creating widget interaction:", error)
+      throw new Error("Failed to create widget interaction")
     }
   }
 
@@ -124,7 +124,7 @@ export class ChatService implements ChatServiceType {
       )
       const openAIMessages = transformToOpenAIMessages(messages)
 
-      const result = await this.agent.execute(openAIMessages)
+      const result = await this.agent.execute(openAIMessages, chatId)
       if (!result) {
         throw new Error("No response from AI agent")
       }

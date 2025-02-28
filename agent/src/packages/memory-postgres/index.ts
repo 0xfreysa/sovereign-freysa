@@ -40,7 +40,6 @@ export class PostgresMemory implements Memory {
 
   async search(query: string): Promise<string[]> {
     const embedding = await this.model.embeddings({
-      model: "text-embedding-ada-002",
       input: query,
     })
 
@@ -68,7 +67,6 @@ export class PostgresMemory implements Memory {
 
     for (const chunk of chunks) {
       const embedding = await this.model.embeddings({
-        model: "text-embedding-ada-002",
         input: chunk,
       })
 

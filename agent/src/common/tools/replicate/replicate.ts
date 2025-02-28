@@ -41,10 +41,12 @@ export const replicateAPICall = async ({
   prompt,
   model,
   numOutputs = 1,
+  outputFormat = "webp",
 }: {
   prompt: string
   model: string
   numOutputs: number
+  outputFormat?: "webp" | "png"
 }) => {
   const token = process.env.REPLICATE_API_TOKEN
   if (!token) {
@@ -68,7 +70,7 @@ export const replicateAPICall = async ({
           megapixels: "1",
           num_outputs: numOutputs,
           aspect_ratio: "1:1",
-          output_format: "webp",
+          output_format: outputFormat,
           guidance_scale: 2.5,
           output_quality: 80,
           prompt_strength: 0.8,
@@ -80,10 +82,10 @@ export const replicateAPICall = async ({
   )
 
   const data = (await response.json()) as ReplicateResponse
-  if (data.output) {
-    return [data.output]
+  if (!data.output) {
+    throw new Error("No output from replicate")
   }
-  return []
+  return [data.output]
 }
 
 export const replicateRunAndSave = async ({
@@ -91,13 +93,20 @@ export const replicateRunAndSave = async ({
   model,
   storage,
   numOutputs = 1,
+  outputFormat = "webp",
 }: {
   prompt: string
   model: string
   storage: FileStorage
   numOutputs: number
+  outputFormat?: "webp" | "png"
 }) => {
-  const imageUrls = await replicateAPICall({ prompt, model, numOutputs })
+  const imageUrls = await replicateAPICall({
+    prompt,
+    model,
+    numOutputs,
+    outputFormat,
+  })
 
   const storedUrls = await Promise.all(
     imageUrls.map((url) => storage.upload(url))

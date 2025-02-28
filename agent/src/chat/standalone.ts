@@ -1,27 +1,24 @@
 import { Agent, OAICompatibleModel } from "../common"
 import { createChatServer } from "./server"
+import { PostgresConfig } from "./storage/factory"
+import { ChatServiceType } from "./types"
+
 interface ServerConfig {
   port?: number
   host?: string
   dbConfig?: {
     type: "postgres"
-    postgres: {
-      host: string
-      port: number
-      database: string
-      user: string
-      password: string
-      ssl?: boolean
-    }
+    postgres: PostgresConfig
   }
   tools?: any[]
   systemPrompt?: string
   modelName?: string
+  chatService?: ChatServiceType
 }
 
 export async function createServer(config: ServerConfig = {}) {
   const {
-    port = 3002,
+    port,
     host = "0.0.0.0",
     dbConfig = {
       type: "postgres",
@@ -36,6 +33,7 @@ export async function createServer(config: ServerConfig = {}) {
     tools = [],
     systemPrompt = "You are a helpful assistant.",
     modelName = "gpt-4o-mini",
+    chatService,
   } = config
 
   const model = new OAICompatibleModel({
@@ -53,6 +51,7 @@ export async function createServer(config: ServerConfig = {}) {
     agent,
     port,
     host,
+    chatService,
   })
 }
 

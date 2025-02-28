@@ -48,13 +48,16 @@ SOCAT_OPTIONS='-d -d'
 # TAP port: the host will bridge VSOCK-LISTEN:$TAP_PORT to tap interface tap0.
 # Must match the corresponding port in the enclave's 'start.sh'.
 # If not specified in environment it defaults to 12345.
-TAP_PORT=${TAP_PORT:-12345}
+# TAP_PORT=${TAP_PORT:-12345}
 
 # Configuration port: the host will send the configuration to this VSOCK
 # port once the enclave has started.
 # Must match the corresponding port in the enclave's 'start.sh'.
 # If not specified in environment it defaults to 72345 (leet `Freys`).
 CONFIG_PORT=${CONFIG_PORT:-72345}
+
+# VSOCK port on which setup.sh sends logging information to the host.
+SETUP_LOGGING_PORT=${SETUP_LOGGING_PORT:-7777}
 
 # Function to start a proxy using socat
 start_proxy() {
@@ -120,64 +123,65 @@ HTTP_ATTESTATION_PORT=$(jq '.sovereign."http-attestation-port" // empty' config.
 HTTPS_ATTESTATION_PORT=$(jq '.sovereign."https-attestation-port" // empty' config.json)
 KEY_SYNC_PORT=$(jq '.sovereign."key-sync-port" // empty' config.json)
 MONITORING_PORT=$(jq '.sovereign."monitoring-port" // empty' config.json)
+GRPC_PORT=$(jq -r '.sovereign."grpc-config".vsock // empty' config.json)
 
 # Recreate and configure TAP interface
-echo "$(date -Iseconds): delete existing tap0 interface"
-sudo ip link delete tap0 2>/dev/null || true
-echo "$(date -Iseconds): creating TAP interface 'tap0'"
-sudo ip tuntap add dev tap0 mode tap
-sudo ip addr add 10.0.0.0/31 dev tap0
-sudo ip link set tap0 up
-echo "$(date -Iseconds): TAP interface 'tap0' is up"
+# echo "$(date -Iseconds): delete existing tap0 interface"
+# sudo ip link delete tap0 2>/dev/null || true
+# echo "$(date -Iseconds): creating TAP interface 'tap0'"
+# sudo ip tuntap add dev tap0 mode tap
+# sudo ip addr add 10.0.0.0/31 dev tap0
+# sudo ip link set tap0 up
+# echo "$(date -Iseconds): TAP interface 'tap0' is up"
 
 # Reset default policy
-sudo iptables -P FORWARD DROP
+# sudo iptables -P FORWARD DROP
 # Established and related connections - always safe to add once
-if ! sudo iptables -C FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null; then
-    sudo iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-fi
+# if ! sudo iptables -C FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null; then
+#     sudo iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+# fi
 # Specific port forwarding and MASQUERADE rules for inbound internet access to the enclave.
-for PORT in 3002; do
-    # Remove existing rules first
-    sudo iptables -t nat -D PREROUTING -p tcp --dport $PORT -j DNAT --to-destination 10.0.0.1:$PORT 2>/dev/null || true
-    sudo iptables -t nat -D POSTROUTING -p tcp -d 10.0.0.1 --dport $PORT -j MASQUERADE 2>/dev/null || true
+# for PORT in 3002; do
+#     # Remove existing rules first
+#     sudo iptables -t nat -D PREROUTING -p tcp --dport $PORT -j DNAT --to-destination 10.0.0.1:$PORT 2>/dev/null || true
+#     sudo iptables -t nat -D POSTROUTING -p tcp -d 10.0.0.1 --dport $PORT -j MASQUERADE 2>/dev/null || true
 
-    # Add rules
-    sudo iptables -t nat -A PREROUTING -p tcp --dport $PORT -j DNAT --to-destination 10.0.0.1:$PORT
-    sudo iptables -t nat -A POSTROUTING -p tcp -d 10.0.0.1 --dport $PORT -j MASQUERADE
-    echo "$(date -Iseconds): added DNAT and MASQUERADE rules for port $PORT"
-done
-echo "$(date -Iseconds): done setup global iptables rules"
+#     # Add rules
+#     sudo iptables -t nat -A PREROUTING -p tcp --dport $PORT -j DNAT --to-destination 10.0.0.1:$PORT
+#     sudo iptables -t nat -A POSTROUTING -p tcp -d 10.0.0.1 --dport $PORT -j MASQUERADE
+#     echo "$(date -Iseconds): added DNAT and MASQUERADE rules for port $PORT"
+# done
+# echo "$(date -Iseconds): done setup global iptables rules"
 
 # Get the main network interface that provides internet connectivity.
 # On AWS EC2 this is typically 'ens5' but we detect it automatically by
 # checking which interface would be used to reach an internet address (1.1.1.1).
-MAIN_IF=$(ip route get 1.1.1.1 | awk '{print $5; exit}')
-echo "$(date -Iseconds): main network interface is $MAIN_IF"
+# MAIN_IF=$(ip route get 1.1.1.1 | awk '{print $5; exit}')
+# echo "$(date -Iseconds): main network interface is $MAIN_IF"
 
 # Remove any existing tap0-specific rules
-sudo iptables -D FORWARD -i tap0 -o $MAIN_IF -j ACCEPT 2>/dev/null || true
-sudo iptables -D FORWARD -i tap0 -o $MAIN_IF -s 10.0.0.0/31 -j ACCEPT 2>/dev/null || true
-sudo iptables -t nat -D POSTROUTING -s 10.0.0.0/31 -o $MAIN_IF -j MASQUERADE 2>/dev/null || true
+# sudo iptables -D FORWARD -i tap0 -o $MAIN_IF -j ACCEPT 2>/dev/null || true
+# sudo iptables -D FORWARD -i tap0 -o $MAIN_IF -s 10.0.0.0/31 -j ACCEPT 2>/dev/null || true
+# sudo iptables -t nat -D POSTROUTING -s 10.0.0.0/31 -o $MAIN_IF -j MASQUERADE 2>/dev/null || true
 
 # Add tap0-specific rules
-sudo iptables -A FORWARD -i tap0 -o $MAIN_IF -s 10.0.0.0/31 -j ACCEPT
-sudo iptables -A FORWARD -i tap0 -o $MAIN_IF -j ACCEPT
-sudo iptables -t nat -A POSTROUTING -s 10.0.0.0/31 -o $MAIN_IF -j MASQUERADE
+# sudo iptables -A FORWARD -i tap0 -o $MAIN_IF -s 10.0.0.0/31 -j ACCEPT
+# sudo iptables -A FORWARD -i tap0 -o $MAIN_IF -j ACCEPT
+# sudo iptables -t nat -A POSTROUTING -s 10.0.0.0/31 -o $MAIN_IF -j MASQUERADE
 
-echo "$(date -Iseconds): setup tap0-specific iptables rules"
+# echo "$(date -Iseconds): setup tap0-specific iptables rules"
 
 # Start the TAP-VSOCK bridge
-if ss -H -l | grep -q "v_str.*:.*$TAP_PORT"; then
-    echo "$(date -Iseconds): ERROR: VSOCK port $TAP_PORT is already in use"
-    sudo ss -lptn | grep $TAP_PORT
-    exit 1
-fi
+# if ss -H -l | grep -q "v_str.*:.*$TAP_PORT"; then
+#     echo "$(date -Iseconds): ERROR: VSOCK port $TAP_PORT is already in use"
+#     sudo ss -lptn | grep $TAP_PORT
+#     exit 1
+# fi
 # Must run with sudo to be able to configure the tap0 interface.
-sudo socat $SOCAT_OPTIONS -lf socat_tap.log VSOCK-LISTEN:$TAP_PORT,fork,reuseaddr TUN,tun-device=/dev/net/tun,tun-name=tap0,tun-type=tap &
+# sudo socat $SOCAT_OPTIONS -lf socat_tap.log VSOCK-LISTEN:$TAP_PORT,fork,reuseaddr TUN,tun-device=/dev/net/tun,tun-name=tap0,tun-type=tap &
 # Make the previous pipeline ignore SIGHUP so it survices shell termination
-disown -h $!
-echo "$(date -Iseconds): started socat TUN/TAP device 'tap0' on VSOCK port $TAP_PORT: see socat_tap.log"
+# disown -h $!
+# echo "$(date -Iseconds): started socat TUN/TAP device 'tap0' on VSOCK port $TAP_PORT: see socat_tap.log"
 
 # SAFE proxy setup
 # Creates a reverse proxy from enclave's SAFE port to external SAFE endpoint
@@ -187,7 +191,8 @@ if [ -n "$SAFE_PORT" ] && [ -n "$SAFE_HTTP_ENDPOINT" ]; then
 fi
 
 # Start loggers for each component and stream type
-for component in sovereign agent; do
+# for component in sovereign agent; do
+for component in sovereign; do
     port=$(jq ".logging.$component.stdout" config.json)
     if [ -z "$port" ]; then
         echo "$(date -Iseconds): ERROR: no port configured for $component"
@@ -211,9 +216,10 @@ fi
 cat config.json | socat $SOCAT_OPTIONS -U -lf socat_config.log "VSOCK-LISTEN:$CONFIG_PORT" STDIN &
 echo "$(date -Iseconds): started config server on VSOCK port $CONFIG_PORT: see socat_config.log"
 
-socat -u $SOCAT_OPTIONS -lf socat_start.log VSOCK-LISTEN:7777,reuseaddr,fork OPEN:start.log,creat,append,wronly &
+# Logging from start.sh.
+socat -u $SOCAT_OPTIONS -lf socat_start.log VSOCK-LISTEN:$SETUP_LOGGING_PORT,reuseaddr,fork OPEN:start.log,creat,append,wronly &
 disown -h $!
-echo "$(date -Iseconds): started listener on VSOCK port 7777 for messages from start script: see start.log"
+echo "$(date -Iseconds): started listener on VSOCK port $SETUP_LOGGING_PORT for messages from start script: see start.log"
 
 
 
@@ -263,7 +269,13 @@ if [ -n "$KEY_SYNC_PORT" ]; then
 fi
 
 # Monitoring proxy setup
-# Listens on KEY_SYNC_PORT and forwards to enclave's VSOCK KEY_SYNC_PORT.
+# Listens on MONITORING_PORT and forwards to enclave's VSOCK MONITORING_PORT.
 if [ -n "$MONITORING_PORT" ]; then
     start_proxy "TCP-LISTEN:$MONITORING_PORT,reuseaddr,fork" "VSOCK-CONNECT:$CID:$MONITORING_PORT" "monitoring"
+fi
+
+# gRPC proxy setup.
+# Listens on port GRPC_PORT and forwards to enclave's VSOCK GRPC_PORT.
+if [ -n "$GRPC_PORT" ]; then
+    start_proxy "TCP-LISTEN:$GRPC_PORT,reuseaddr,fork" "VSOCK-CONNECT:$CID:$GRPC_PORT" "grpc"
 fi

@@ -1,5 +1,10 @@
 import Database from "better-sqlite3"
-import { Chat, Message, Role } from "../generated/graphql"
+import {
+  Chat,
+  Message,
+  Role,
+  WidgetInteractionInput,
+} from "../generated/graphql"
 import { ChatStorage, CreateMessageInput } from "./types"
 
 export class SQLiteChatStorage implements ChatStorage {
@@ -29,6 +34,10 @@ export class SQLiteChatStorage implements ChatStorage {
         FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
       );
     `)
+  }
+  addWidgetInteraction(interaction: WidgetInteractionInput): Promise<any> {
+    //@TODO: Implement this
+    return Promise.resolve(null)
   }
 
   async createChat(name: string, userId: string): Promise<Chat> {

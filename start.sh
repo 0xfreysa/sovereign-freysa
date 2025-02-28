@@ -31,7 +31,7 @@ SOCAT_OPTIONS=''
 # TAP port: bridge VSOCK:$TAP_PORT to tap interface tap0.
 # Must match the corresponding port in the host's 'run_enclave.sh'.
 # If not specified in environment it defaults to 12345.
-TAP_PORT=${TAP_PORT:-12345}
+# TAP_PORT=${TAP_PORT:-12345}
 
 # Configuration port: the host will send the configuration to this VSOCK
 # port once the enclave has started.
@@ -39,9 +39,12 @@ TAP_PORT=${TAP_PORT:-12345}
 # If not specified in environment it defaults to 72345 (leet `Freys`).
 CONFIG_PORT=${CONFIG_PORT:-72345}
 
+# Port on which setup.sh sends logging information to the host.
+SETUP_LOGGING_PORT=${SETUP_LOGGING_PORT:-7777}
+
 # Log to the host - so that logging is visible also for production enclaves.
 log_to_host() {
-    echo "$(date -Iseconds): $1" | socat -u $SOCAT_OPTIONS STDIN VSOCK-CONNECT:3:7777
+    echo "$(date -Iseconds): $1" | socat -u $SOCAT_OPTIONS STDIN VSOCK-CONNECT:3:$SETUP_LOGGING_PORT
 }
 
 # Log a list of running processes.
@@ -110,31 +113,31 @@ AGENT_STDOUT=$(jq '.logging.agent.stdout' config.json)
 # STEP 2: Setup networking
 # -----------------------------------------------------------------------------
 
-mkdir -p /run/resolvconf
-echo "nameserver 1.1.1.1" > /run/resolvconf/resolv.conf
-ip link set lo up
-log_to_host "start 'dnsmasq' with nameserver 1.1.1.1"
-dnsmasq &
+# mkdir -p /run/resolvconf
+# echo "nameserver 1.1.1.1" > /run/resolvconf/resolv.conf
+# ip link set lo up
+# log_to_host "start 'dnsmasq' with nameserver 1.1.1.1"
+# dnsmasq &
 
-log_to_host "configure TAP "
-socat $SOCAT_OPTIONS VSOCK-CONNECT:3:$TAP_PORT TUN:10.0.0.1/31,tun-type=tap,up &
-log_to_host "started socat TUN/TAP device 'tap0' on VSOCK port $TAP_PORT"
+# log_to_host "configure TAP "
+# socat $SOCAT_OPTIONS VSOCK-CONNECT:3:$TAP_PORT TUN:10.0.0.1/31,tun-type=tap,up &
+# log_to_host "started socat TUN/TAP device 'tap0' on VSOCK port $TAP_PORT"
 
 # Wait up to 5 seconds for TAP interface to appear
-for i in $(seq 0 50); do
-    if [ $i -eq 50 ]; then
-        log_to_host "ERROR: timeout waiting for TAP interface 'tap0' to appear"
-        exit 1
-    fi
-    if ip link show tap0 >/dev/null 2>&1; then
-        log_to_host "TAP interface 'tap0' is up"
-        break
-    fi
-    sleep 0.1
-done
+# for i in $(seq 0 50); do
+#     if [ $i -eq 50 ]; then
+#         log_to_host "ERROR: timeout waiting for TAP interface 'tap0' to appear"
+#         exit 1
+#     fi
+#     if ip link show tap0 >/dev/null 2>&1; then
+#         log_to_host "TAP interface 'tap0' is up"
+#         break
+#     fi
+#     sleep 0.1
+# done
 
-ip route add default via 10.0.0.0 dev tap0
-log_to_host "added default route to 10.0.0.0 (host)"
+# ip route add default via 10.0.0.0 dev tap0
+# log_to_host "added default route to 10.0.0.0 (host)"
 
 
 
@@ -167,15 +170,15 @@ log_to_host "sovereign binary started"
 
 log_to_host "enclave startup complete"
 
-if [ "$(jq -r '."debug-mode"' config.json)" = "true" ]; then
-    log_to_host "network connectivity tests"
+# if [ "$(jq -r '."debug-mode"' config.json)" = "true" ]; then
+#     log_to_host "network connectivity tests"
     
-    log_to_host "request to https://1.1.1.1:443 to check TAP connectivity"
-    echo -e "GET /help/ HTTP/1.1\r\nHost: one.one.one.one\r\n\r\n" | socat $SOCAT_OPTIONS STDIO OPENSSL:1.1.1.1:443,verify=0,no-sni=1 | grep "HTTP/1.1"
+#     log_to_host "request to https://1.1.1.1:443 to check TAP connectivity"
+#     echo -e "GET /help/ HTTP/1.1\r\nHost: one.one.one.one\r\n\r\n" | socat $SOCAT_OPTIONS STDIO OPENSSL:1.1.1.1:443,verify=0,no-sni=1 | grep "HTTP/1.1"
 
-    log_to_host "request to https://one.one.one.one:443 to check TAP connectivity"
-    echo -e "GET /help/ HTTP/1.1\r\nHost: one.one.one.one\r\n\r\n" | socat $SOCAT_OPTIONS STDIO OPENSSL:one.one.one.one:443,verify=0,no-sni=1 | grep "HTTP/1.1"
-fi
+#     log_to_host "request to https://one.one.one.one:443 to check TAP connectivity"
+#     echo -e "GET /help/ HTTP/1.1\r\nHost: one.one.one.one\r\n\r\n" | socat $SOCAT_OPTIONS STDIO OPENSSL:one.one.one.one:443,verify=0,no-sni=1 | grep "HTTP/1.1"
+# fi
 
 # Start a background heartbeat process
 (

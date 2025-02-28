@@ -1,7 +1,6 @@
 import OpenAI from "openai"
 import { ChatCompletion } from "openai/resources/index"
 import { TEmbedCall, TModel, TModelCall } from "./types"
-import { logger } from "../utils/logger"
 
 /**
  * A model implementation compatible with services that implement the OpenAI API specification.
@@ -93,7 +92,7 @@ export class OAICompatibleModel implements TModel {
    */
   async embeddings(body: TEmbedCall): Promise<number[]> {
     const embedding = await this.client.embeddings.create({
-      model: body.model,
+      model: this.modelName,
       input: body.input,
     })
 

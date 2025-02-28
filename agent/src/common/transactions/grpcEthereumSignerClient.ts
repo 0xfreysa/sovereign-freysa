@@ -14,11 +14,12 @@ export class GrpcEthereumSignerClient {
 
   constructor(
     grpcServerUrl: string = "unix:///tmp/enclave.sock",
-    bearerToken?: string
+    bearerToken?: string,
+    ssl: boolean = true
   ) {
     this.client = new KeyPoolServiceClient(
       grpcServerUrl,
-      credentials.createInsecure()
+      ssl ? credentials.createSsl() : credentials.createInsecure()
     )
     this.bearerToken = bearerToken
   }

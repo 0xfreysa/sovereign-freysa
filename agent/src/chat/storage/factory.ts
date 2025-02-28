@@ -6,15 +6,23 @@ import { SQLiteChatStorage } from "./sqlite"
 
 export type DatabaseType = "postgres" | "sqlite"
 
+type PostgresConnectionString = {
+  connectionString: string
+}
+
+type PostgresConnectionParams = {
+  host: string
+  port: number
+  database: string
+  user: string
+  password: string
+}
+
+export type PostgresConfig = PostgresConnectionString | PostgresConnectionParams
+
 export interface StorageConfig {
   type: DatabaseType
-  postgres?: {
-    host: string
-    port: number
-    database: string
-    user: string
-    password: string
-  }
+  postgres?: PostgresConfig
   sqlite?: {
     filename: string
   }
